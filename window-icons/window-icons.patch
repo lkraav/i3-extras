@@ -1,32 +1,33 @@
-From 7f45c393ee8a9dbe35b7c6128d1c87bc540c7a5a Mon Sep 17 00:00:00 2001
-From: Marius Muja <mariusm@cs.ubc.ca>
-Date: Wed, 14 Oct 2015 10:04:14 +0200
-Subject: [PATCH] Added support for window icons (_NET_WM_ICON property)
+From f870f32385bf409c3a4a3a92f09aa3c36f69b408 Mon Sep 17 00:00:00 2001
+From: Leho Kraav <leho@kraav.com>
+Date: Sun, 19 Apr 2015 13:23:27 +0300
+Subject: [PATCH] i3-4.12-window-icons.patch
 
 ---
- common.mk            |  7 +++++
- include/atoms.xmacro |  1 +
- include/data.h       |  5 ++++
- include/window.h     |  9 ++++++
- src/manage.c         | 11 ++++++++
- src/render.c         |  5 ++++
- src/tree.c           |  3 ++
- src/window.c         | 80 ++++++++++++++++++++++++++++++++++++++++++++++++++++
- src/x.c              | 78 ++++++++++++++++++++++++++++++++++++++++++++++++++
- 9 files changed, 199 insertions(+)
+ common.mk                 |  7 +++++
+ include/atoms_rest.xmacro |  1 +
+ include/data.h            |  5 +++
+ include/window.h          |  9 ++++++
+ src/manage.c              |  9 ++++++
+ src/render.c              |  5 +++
+ src/tree.c                |  7 +++++
+ src/window.c              | 80 +++++++++++++++++++++++++++++++++++++++++++++++
+ src/x.c                   | 78 +++++++++++++++++++++++++++++++++++++++++++++
+ 9 files changed, 201 insertions(+)
 
 diff --git a/common.mk b/common.mk
-index d287504..b303bd3 100644
+index 4fe8f2b..99d35f8 100644
 --- a/common.mk
 +++ b/common.mk
-@@ -1,5 +1,6 @@
+@@ -1,6 +1,7 @@
  UNAME=$(shell uname)
  DEBUG=1
+ ASAN=0
 +USE_ICONS=1
  INSTALL=install
  LN=ln
  PKG_CONFIG=pkg-config
-@@ -59,6 +60,9 @@ I3_CPPFLAGS += -DMINOR_VERSION=${MINOR_VERSION}
+@@ -65,6 +66,9 @@ I3_CPPFLAGS += -DMINOR_VERSION=${MINOR_VERSION}
  I3_CPPFLAGS += -DPATCH_VERSION=${PATCH_VERSION}
  I3_CPPFLAGS += -DSYSCONFDIR=\"${SYSCONFDIR}\"
  I3_CPPFLAGS += -DI3__FILE__=__FILE__
@@ -36,7 +37,7 @@ index d287504..b303bd3 100644
  
  
  ## Libraries flags
-@@ -108,6 +112,9 @@ XCB_WM_CFLAGS += $(call cflags_for_lib, xcb-randr)
+@@ -114,6 +118,9 @@ XCB_WM_CFLAGS += $(call cflags_for_lib, xcb-randr)
  XCB_WM_LIBS   := $(call ldflags_for_lib, xcb-icccm,xcb-icccm)
  XCB_WM_LIBS   += $(call ldflags_for_lib, xcb-xinerama,xcb-xinerama)
  XCB_WM_LIBS   += $(call ldflags_for_lib, xcb-randr,xcb-randr)
@@ -44,14 +45,14 @@ index d287504..b303bd3 100644
 +XCB_WM_LIBS   += $(call ldflags_for_lib, xcb-image,xcb-image)
 +endif
  
- XKB_COMMON_CFLAGS := $(call cflags_for_lib, xkbcommon,xkbcommon)
- XKB_COMMON_LIBS := $(call ldflags_for_lib, xkbcommon,xkbcommon)
-diff --git a/include/atoms.xmacro b/include/atoms.xmacro
-index f856559..79b7838 100644
---- a/include/atoms.xmacro
-+++ b/include/atoms.xmacro
-@@ -32,6 +32,7 @@ xmacro(_NET_ACTIVE_WINDOW)
- xmacro(_NET_CLOSE_WINDOW)
+ # XCB cursor
+ XCB_CURSOR_CFLAGS := $(call cflags_for_lib, xcb-cursor)
+diff --git a/include/atoms_rest.xmacro b/include/atoms_rest.xmacro
+index d461dc0..f32a7e1 100644
+--- a/include/atoms_rest.xmacro
++++ b/include/atoms_rest.xmacro
+@@ -1,6 +1,7 @@
+ xmacro(_NET_WM_USER_TIME)
  xmacro(_NET_STARTUP_ID)
  xmacro(_NET_WORKAREA)
 +xmacro(_NET_WM_ICON)
@@ -59,10 +60,10 @@ index f856559..79b7838 100644
  xmacro(WM_DELETE_WINDOW)
  xmacro(UTF8_STRING)
 diff --git a/include/data.h b/include/data.h
-index 58e4a00..b6c412f 100644
+index 3a059e7..cbc2ac6 100644
 --- a/include/data.h
 +++ b/include/data.h
-@@ -421,6 +421,11 @@ struct Window {
+@@ -426,6 +426,11 @@ struct Window {
  
      /* aspect ratio from WM_NORMAL_HINTS (MPlayer uses this for example) */
      double aspect_ratio;
@@ -75,13 +76,13 @@ index 58e4a00..b6c412f 100644
  
  /**
 diff --git a/include/window.h b/include/window.h
-index 395c988..f7a928d 100644
+index d0b97f1..36c8f1f 100644
 --- a/include/window.h
 +++ b/include/window.h
-@@ -68,6 +68,15 @@ void window_update_type(i3Window *window, xcb_get_property_reply_t *reply);
+@@ -87,3 +87,12 @@ void window_update_hints(i3Window *win, xcb_get_property_reply_t *prop, bool *ur
+  *
   */
- void window_update_hints(i3Window *win, xcb_get_property_reply_t *prop, bool *urgency_hint);
- 
+ void window_update_motif_hints(i3Window *win, xcb_get_property_reply_t *prop, border_style_t *motif_border_style);
 +
 +#ifdef USE_ICONS
 +/**
@@ -89,84 +90,83 @@ index 395c988..f7a928d 100644
 + *
 + */
 +void window_update_icon(i3Window *win, xcb_get_property_reply_t *prop);
-+#endif
 +
- /**
-  * Updates the MOTIF_WM_HINTS. The container's border style should be set to
-  * `motif_border_style' if border style is not BS_NORMAL.
++#endif
 diff --git a/src/manage.c b/src/manage.c
-index e376967..891182f 100644
+index 93272f1..52ad768 100644
 --- a/src/manage.c
 +++ b/src/manage.c
-@@ -92,6 +92,10 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
+@@ -91,6 +91,9 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
+         class_cookie, leader_cookie, transient_cookie,
          role_cookie, startup_id_cookie, wm_hints_cookie,
-         wm_normal_hints_cookie, motif_wm_hints_cookie;
- 
+         wm_normal_hints_cookie, motif_wm_hints_cookie, wm_user_time_cookie, wm_desktop_cookie;
 +#ifdef USE_ICONS
 +    xcb_get_property_cookie_t wm_icon_cookie;
 +#endif
-+
+ 
      geomc = xcb_get_geometry(conn, d);
  
-     /* Check if the window is mapped (it could be not mapped when intializing and
-@@ -161,6 +165,9 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
-     wm_hints_cookie = xcb_icccm_get_wm_hints(conn, window);
-     wm_normal_hints_cookie = xcb_icccm_get_wm_normal_hints(conn, window);
+@@ -163,6 +166,9 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
      motif_wm_hints_cookie = GET_PROPERTY(A__MOTIF_WM_HINTS, 5 * sizeof(uint64_t));
+     wm_user_time_cookie = GET_PROPERTY(A__NET_WM_USER_TIME, UINT32_MAX);
+     wm_desktop_cookie = GET_PROPERTY(A__NET_WM_DESKTOP, UINT32_MAX);
 +#ifdef USE_ICONS
 +    wm_icon_cookie = xcb_get_property_unchecked(conn, false, window, A__NET_WM_ICON, XCB_ATOM_CARDINAL, 0, UINT32_MAX);
 +#endif
  
      DLOG("Managing window 0x%08x\n", window);
  
-@@ -187,6 +194,10 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
-     window_update_hints(cwindow, xcb_get_property_reply(conn, wm_hints_cookie, NULL), &urgency_hint);
-     border_style_t motif_border_style = BS_NORMAL;
-     window_update_motif_hints(cwindow, xcb_get_property_reply(conn, motif_wm_hints_cookie, NULL), &motif_border_style);
+@@ -189,6 +195,9 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
+         memset(&wm_size_hints, '\0', sizeof(xcb_size_hints_t));
+     xcb_get_property_reply_t *type_reply = xcb_get_property_reply(conn, wm_type_cookie, NULL);
+     xcb_get_property_reply_t *state_reply = xcb_get_property_reply(conn, state_cookie, NULL);
 +#ifdef USE_ICONS
 +    window_update_icon(cwindow, xcb_get_property_reply(conn, wm_icon_cookie, NULL));
 +#endif
-+
-     xcb_size_hints_t wm_size_hints;
-     if (!xcb_icccm_get_wm_size_hints_reply(conn, wm_normal_hints_cookie, &wm_size_hints, NULL))
-         memset(&wm_size_hints, '\0', sizeof(xcb_size_hints_t));
+ 
+     xcb_get_property_reply_t *startup_id_reply;
+     startup_id_reply = xcb_get_property_reply(conn, startup_id_cookie, NULL);
 diff --git a/src/render.c b/src/render.c
-index 7ada19e..9eecf4b 100644
+index 9fa40f0..ce27d76 100644
 --- a/src/render.c
 +++ b/src/render.c
-@@ -223,6 +223,11 @@ void render_con(Con *con, bool render_fullscreen) {
+@@ -126,6 +126,11 @@ void render_con(Con *con, bool render_fullscreen) {
  
      /* find the height for the decorations */
-     int deco_height = render_deco_height();
+     params.deco_height = render_deco_height();
 +#ifdef USE_ICONS
 +    /* minimum decoration height to allow icon to fit
 +     * not actuuly required, icon would be cropped otherwise */
-+    deco_height = deco_height<16 ? 16 : deco_height;
++    params.deco_height = params.deco_height<16 ? 16 : params.deco_height;
 +#endif
  
      /* precalculate the sizes to be able to correct rounding errors */
-     int sizes[children];
+     params.sizes = precalculate_sizes(con, &params);
 diff --git a/src/tree.c b/src/tree.c
-index 1d06d87..bbd5548 100644
+index 0c30120..d3ba9fc 100644
 --- a/src/tree.c
 +++ b/src/tree.c
-@@ -268,6 +268,9 @@ bool tree_close(Con *con, kill_window_t kill_window, bool dont_kill_parent, bool
-         FREE(con->window->class_class);
-         FREE(con->window->class_instance);
-         i3string_free(con->window->name);
+@@ -266,6 +266,13 @@ bool tree_close_internal(Con *con, kill_window_t kill_window, bool dont_kill_par
+             add_ignore_event(cookie.sequence, 0);
+         }
+         ipc_send_window_event("close", con);
++
++        /* TODO still needed for 4.12?
 +#ifdef USE_ICONS
 +        FREE(con->window->icon);
 +#endif
-         FREE(con->window->ran_assignments);
-         FREE(con->window);
++         */
++
+         window_free(con->window);
+         con->window = NULL;
      }
 diff --git a/src/window.c b/src/window.c
-index 5898333..0ad7d01 100644
+index d10811f..ba05d85 100644
 --- a/src/window.c
 +++ b/src/window.c
-@@ -406,3 +406,83 @@ i3String *window_parse_title_format(i3Window *win) {
-     i3string_set_markup(formatted, is_markup);
-     return formatted;
+@@ -367,3 +367,83 @@ void window_update_motif_hints(i3Window *win, xcb_get_property_reply_t *prop, bo
+ #undef MWM_DECOR_BORDER
+ #undef MWM_DECOR_TITLE
  }
 +
 +#ifdef USE_ICONS
@@ -203,7 +203,7 @@ index 5898333..0ad7d01 100644
 +    uint64_t len = 0;
 +
 +    if(!prop || prop->type != XCB_ATOM_CARDINAL || prop->format != 32) {
-+        DLOG("_NET_WM_ICON is not set\n");
++            DLOG("_NET_WM_ICON is not set\n");
 +        FREE(prop);
 +        return;
 +    }
@@ -214,29 +214,29 @@ index 5898333..0ad7d01 100644
 +    /* Find the number of icons in the reply. */
 +    while(prop_value_len > (sizeof(uint32_t) * 2) && prop_value && prop_value[0] && prop_value[1])
 +    {
-+    	/* Check that the property is as long as it should be (in bytes),
++        /* Check that the property is as long as it should be (in bytes),
 +         handling integer overflow. "+2" to handle the width and height
 +         fields. */
-+    	const uint64_t crt_len = prop_value[0] * (uint64_t) prop_value[1];
-+    	const uint64_t expected_len = (crt_len + 2) * 4;
-+    	if(expected_len > prop_value_len)
-+    		break;
++        const uint64_t crt_len = prop_value[0] * (uint64_t) prop_value[1];
++        const uint64_t expected_len = (crt_len + 2) * 4;
++        if(expected_len > prop_value_len)
++            break;
 +
-+    	if (len==0 || (crt_len>=16*16 && crt_len<len)) {
-+    		len = crt_len;
-+    		data  = prop_value;
-+    	}
-+    	if (len==16*16) break; // found 16 pixels icon
++        if (len==0 || (crt_len>=16*16 && crt_len<len)) {
++            len = crt_len;
++            data  = prop_value;
++        }
++        if (len==16*16) break; // found 16 pixels icon
 +
-+    	/* Find pointer to next icon in the reply. */
-+    	prop_value_len -= expected_len;
-+    	prop_value = (uint32_t *) (((uint8_t *) prop_value) + expected_len);
++        /* Find pointer to next icon in the reply. */
++        prop_value_len -= expected_len;
++        prop_value = (uint32_t *) (((uint8_t *) prop_value) + expected_len);
 +    }
 +
 +    if (!data ) {
-+    	DLOG("Could not get _NET_WM_ICON\n");
-+    	free(prop);
-+    	return;
++        DLOG("Could not get _NET_WM_ICON\n");
++        free(prop);
++        return;
 +    }
 +
 +    LOG("Got _NET_WM_ICON of size: (%d,%d)\n", data[0], data[1]);
@@ -249,7 +249,7 @@ index 5898333..0ad7d01 100644
 +}
 +#endif /* USE_ICONS */
 diff --git a/src/x.c b/src/x.c
-index 9b9ba6a..226b9fb 100644
+index f44bc37..55f9867 100644
 --- a/src/x.c
 +++ b/src/x.c
 @@ -11,6 +11,9 @@
@@ -262,34 +262,34 @@ index 9b9ba6a..226b9fb 100644
  
  xcb_window_t ewmh_window;
  
-@@ -312,6 +315,44 @@ void x_window_kill(xcb_window_t window, kill_window_t kill_window) {
-     free(event);
+@@ -347,6 +350,44 @@ static void x_draw_decoration_after_title(Con *con, struct deco_render_params *p
+     x_draw_title_border(con, p);
  }
  
 +#ifdef USE_ICONS
 +
 +static inline uint32_t pixel_blend(uint32_t d, uint32_t s)
 +{
-+	const uint32_t a     = (s >> 24) + 1;
++    const uint32_t a     = (s >> 24) + 1;
 +
-+	const uint32_t dstrb = d & 0xFF00FF;
-+	const uint32_t dstg  = d & 0xFF00;
++    const uint32_t dstrb = d & 0xFF00FF;
++    const uint32_t dstg  = d & 0xFF00;
 +
-+	const uint32_t srcrb = s & 0xFF00FF;
-+	const uint32_t srcg  = s & 0xFF00;
++    const uint32_t srcrb = s & 0xFF00FF;
++    const uint32_t srcg  = s & 0xFF00;
 +
-+	uint32_t drb = srcrb - dstrb;
-+	uint32_t dg  =  srcg - dstg;
++    uint32_t drb = srcrb - dstrb;
++    uint32_t dg  =  srcg - dstg;
 +
-+	drb *= a;
-+	dg  *= a;  
-+	drb >>= 8;
-+	dg  >>= 8;
++    drb *= a;
++    dg  *= a;
++    drb >>= 8;
++    dg  >>= 8;
 +
-+	uint32_t rb = (drb + dstrb) & 0xFF00FF;
-+	uint32_t g  = (dg  + dstg) & 0xFF00;
++    uint32_t rb = (drb + dstrb) & 0xFF00FF;
++    uint32_t g  = (dg  + dstg) & 0xFF00;
 +
-+	return rb | g;
++    return rb | g;
 +}
 +
 +/*
@@ -299,7 +299,7 @@ index 9b9ba6a..226b9fb 100644
 +{
 +    int i;
 +    for(i=0; i < 16*16; ++i) {
-+    	*dst++ = pixel_blend(background,*src++);
++        *dst++ = pixel_blend(background,*src++);
 +    }
 +}
 +#endif
@@ -307,7 +307,7 @@ index 9b9ba6a..226b9fb 100644
  /*
   * Draws the decoration of the given container onto its parent.
   *
-@@ -543,6 +584,9 @@ void x_draw_decoration(Con *con) {
+@@ -570,6 +611,9 @@ void x_draw_decoration(Con *con) {
      }
      //DLOG("indent_level = %d, indent_mult = %d\n", indent_level, indent_mult);
      int indent_px = (indent_level * 5) * indent_mult;
@@ -316,9 +316,9 @@ index 9b9ba6a..226b9fb 100644
 +#endif
  
      int mark_width = 0;
-     if (config.show_marks && con->mark != NULL && (con->mark)[0] != '_') {
-@@ -567,6 +611,40 @@ void x_draw_decoration(Con *con) {
-     if (win->title_format != NULL)
+     if (config.show_marks && !TAILQ_EMPTY(&(con->marks_head))) {
+@@ -611,6 +655,40 @@ void x_draw_decoration(Con *con) {
+     if (con->title_format != NULL)
          I3STRING_FREE(title);
  
 +#ifdef USE_ICONS
@@ -356,8 +356,8 @@ index 9b9ba6a..226b9fb 100644
 +#endif
 +
  after_title:
-     /* Since we don’t clip the text at all, it might in some cases be painted
-      * on the border pixels on the right side of a window. Therefore, we draw
+     x_draw_decoration_after_title(con, p);
+ copy_pixmaps:
 -- 
-2.4.3
+2.4.10
 
